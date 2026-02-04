@@ -1,0 +1,14 @@
+# Deploy no Render — Django (Git + Render)
+# Conecte o repositório em dashboard.render.com e use este Blueprint.
+
+services:
+  - type: web
+    runtime: python
+    name: mapa-show-nacional
+    buildCommand: pip install -r requirements-django.txt && python manage.py collectstatic --noinput
+    startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT
+    envVars:
+      - key: GCP_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: DJANGO_SECRET_KEY
+        generateValue: true

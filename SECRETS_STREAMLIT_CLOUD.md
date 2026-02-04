@@ -35,8 +35,42 @@ universe_domain = "googleapis.com"
 ## Como obter o TOML a partir do credentials.json
 
 - Copie cada campo do `credentials.json` para o TOML.
-- A **private_key** deve ficar entre `"""` (três aspas), com as quebras de linha preservadas.
-- O nome da seção **tem que ser** `[gcp_service_account]` — é isso que o `app.py` usa em `st.secrets["gcp_service_account"]`.
+- A **private_key** deve ficar entre `"""` (três aspas), **com quebras de linha reais** (cada linha da chave em uma linha no Secrets). Não cole a chave em uma única linha com `\n`; use Enter para quebrar as linhas.
+- O nome da seção **tem que ser** `[gcp_service_account]`.
+
+## Erro "Unable to load PEM file" / InvalidByte(128, 46)
+
+Esse erro costuma vir de **caractere inválido** na chave ao colar nos Secrets. Duas formas de evitar:
+
+### Opção A — Usar só o base64 (recomendado para evitar erro)
+
+Em vez de colar a chave PEM inteira, use o campo **`private_key_base64`**: cole **apenas o conteúdo base64** (todas as linhas entre `-----BEGIN...` e `-----END...` **juntas, em uma única linha**, sem espaços nem quebras).
+
+1. No `credentials.json`, abra o campo `"private_key"`.
+2. Apague as linhas `-----BEGIN PRIVATE KEY-----` e `-----END PRIVATE KEY-----`.
+3. Junte todas as linhas do meio em uma só (copie e cole em um editor, apague os Enter, ou use substituir `\n` por nada).
+4. Nos Secrets do Streamlit, adicione:
+
+```toml
+[gcp_service_account]
+type = "service_account"
+project_id = "meu-extrator-465616"
+private_key_id = "277f30603e5f16b80fe72c3d439f845b9604dde8"
+private_key_base64 = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCiXX20Xv+69pcwd+WQM4gUaDoz224kBFWNc+Nkx2zgjPvEoXP6b8e0pjsjN2Nx4e5L6EvLP5AxLnSj..."
+# ... client_email, client_id, etc. (sem private_key)
+client_email = "finbot-service@meu-extrator-465616.iam.gserviceaccount.com"
+# ...
+```
+
+O app monta o PEM a partir desse valor; assim você não cola a chave com quebras de linha e evita InvalidByte.
+
+### Opção B — Colar a chave PEM inteira
+
+Use `private_key` entre `"""` com **quebras de linha reais** (cada linha da chave em uma linha). Copie de novo do `credentials.json` para não levar aspas curvas ou espaços a mais. O app tenta corrigir `\n` literal e remove caracteres inválidos; se ainda der erro, use a Opção A.
+
+## Erro "No secrets found" no Render
+
+Se no Render aparecer algo como: *"No secrets found. Valid paths for a secrets.toml file..."*, é porque o Streamlit procura um arquivo `secrets.toml` ao iniciar. No repositório existe a pasta `.streamlit/` com um `secrets.toml` **vazio** (só comentários). Assim o Streamlit encontra o arquivo e não exibe esse erro. No Render as credenciais vêm da variável de ambiente **GCP_SERVICE_ACCOUNT_JSON** (Settings → Environment), não desse arquivo.
 
 ## Segurança
 

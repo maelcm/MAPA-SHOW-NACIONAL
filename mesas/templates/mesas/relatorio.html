@@ -1,0 +1,53 @@
+{% extends "mesas/base.html" %}
+{% block content %}
+<nav class="tabs">
+  <a href="{% url 'home' %}">🗺️ Mapa de Mesas</a>
+  <a href="{% url 'imagem_mapa' %}" target="_blank">🖼️ Imagem do Mapa</a>
+  <a href="{% url 'relatorio' %}" class="active">📊 Relatório</a>
+</nav>
+
+<section class="panel-card">
+  <h2>Resumo financeiro e ocupação</h2>
+  <div class="metrics inline">
+    <span class="metric">💰 Caixa: R$ {{ caixa|floatformat:2 }}</span>
+    <span class="metric">💸 A receber: R$ {{ receber|floatformat:2 }}</span>
+    <span class="metric">🔴 Vendidas: {{ vendidas_count }}</span>
+    <span class="metric">🟡 Reservadas: {{ reservadas_count }}</span>
+    <span class="metric">🟢 Livres: {{ livres }}</span>
+  </div>
+</section>
+
+<section class="panel-card">
+  <h2>Extrato (vendas e reservas)</h2>
+  {% if ocupadas %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Mesa</th>
+          <th>Status</th>
+          <th>Cliente</th>
+          <th>Telefone</th>
+          <th>Preço</th>
+          <th>Valor cobrado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in ocupadas %}
+        <tr>
+          <td>{{ r.Numero_Display }}</td>
+          <td>{{ r.Status }}</td>
+          <td>{{ r.Nome_Cliente }}</td>
+          <td>{{ r.Telefone_Cliente|default:"-" }}</td>
+          <td>{{ r.Preco_Mesa }}</td>
+          <td>{{ r.Valor_Entrada_Cobrado|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>Nenhuma venda ou reserva ainda.</p>
+  {% endif %}
+</section>
+{% endblock %}

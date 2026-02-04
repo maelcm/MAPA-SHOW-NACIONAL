@@ -2,4 +2,4 @@ streamlit>=1.53
 pandas
 gspread
 google-auth
-streamlit-image-coordinates
+reportlab

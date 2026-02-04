@@ -1,0 +1,8 @@
+{% extends "mesas/base.html" %}
+{% block content %}
+<div class="panel-card erro">
+  <h2>Erro de conexão</h2>
+  <p>{{ erro }}</p>
+  <p><a href="{% url 'home' %}">Tentar novamente</a></p>
+</div>
+{% endblock %}

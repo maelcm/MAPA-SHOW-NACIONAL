@@ -1,0 +1,7 @@
+# Django + Render (gunicorn, whitenoise) + Google Sheets
+Django>=5.0
+gunicorn
+whitenoise
+gspread
+google-auth
+pandas

@@ -1,0 +1,28 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Gestão Festa São Pedro 2026{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'mesas/style.css' %}">
+</head>
+<body>
+  <header class="main-header">
+    <h1>🎪 Gestão Festa São Pedro 2026</h1>
+    <p>Sistema de Reserva de Mesas</p>
+  </header>
+  {% if not erro %}
+  <nav class="metrics">
+    <span class="metric">🟢 Livres: <strong>{{ livres }}</strong></span>
+    <span class="metric">🟡 Reservadas: <strong>{{ reservadas_count }}</strong></span>
+    <span class="metric">🔴 Vendidas: <strong>{{ vendidas_count }}</strong></span>
+    <span class="metric">💰 Caixa: <strong>R$ {{ caixa|floatformat:0 }}</strong></span>
+    <span class="metric">💸 A receber: <strong>R$ {{ receber|floatformat:0 }}</strong></span>
+  </nav>
+  {% endif %}
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

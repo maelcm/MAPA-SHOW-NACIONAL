@@ -1,0 +1,81 @@
+{% extends "mesas/base.html" %}
+{% load static %}
+{% block content %}
+<nav class="tabs">
+  <a href="{% url 'home' %}" class="{% if not mesa_selecionada_id %}active{% endif %}">🗺️ Mapa de Mesas</a>
+  <a href="{% url 'imagem_mapa' %}" target="_blank">🖼️ Imagem do Mapa</a>
+  <a href="{% url 'relatorio' %}">📊 Relatório</a>
+</nav>
+
+<section class="mapa-section">
+  <h2>Clique na mesa</h2>
+  <p class="caption">🟢 Livre · 🟡 Reservado · 🔴 Vendido</p>
+
+  {% for setor_nome, linhas in setores.items %}
+  <h3>{{ setor_nome }}</h3>
+  {% for row_mesas in linhas %}
+  <div class="grade-mesas" style="--cols: {{ max_cols }};">
+    {% for m in row_mesas %}
+      {% if m %}
+      <a href="{% url 'mesa_detail' id_mesa=m.ID_Mesa %}" class="btn-mesa {% if m.Status == 'Vendido' %}vendido{% elif m.Status == 'Reservado' %}reservado{% else %}livre{% endif %}">
+        {% if m.Status == 'Vendido' %}🔴{% elif m.Status == 'Reservado' %}🟡{% else %}🟢{% endif %} {{ m.Numero_Display }}
+      </a>
+      {% else %}
+      <span class="btn-mesa vazio"></span>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endfor %}
+  {% endfor %}
+</section>
+
+<section class="busca-mesa">
+  <h2>Ou digite o número da mesa</h2>
+  <form method="get" action="{% url 'home' %}" class="form-inline">
+    <input type="number" name="mesa" min="1" max="99" value="1" placeholder="Nº mesa">
+    <button type="submit" class="btn btn-primary">Abrir mesa</button>
+  </form>
+</section>
+
+{% if mesa %}
+<section class="panel-card formulario-mesa" id="form-mesa">
+  <h3>📝 Mesa {{ mesa.Numero_Display }} — {{ mesa_status }}</h3>
+  <p class="caption">Setor: {{ mesa.Tipo_Item }} · Linha {{ mesa.Linha }}</p>
+
+  {% if mesa_status == "Livre" %}
+  <p><strong>Valor:</strong> R$ {{ mesa.Preco_Mesa }}</p>
+  <form method="post" action="{% url 'mesa_reservar' id_mesa=mesa_selecionada_id %}">
+    {% csrf_token %}
+    <input type="text" name="nome_cliente" placeholder="Nome do cliente" required>
+    <input type="text" name="telefone" placeholder="Telefone">
+    <input type="text" name="festeiro" placeholder="Festeiro (indicação)">
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">💾 Salvar reserva</button>
+      <a href="{% url 'home' %}" class="btn">Fechar</a>
+    </div>
+  </form>
+  {% elif mesa_status == "Reservado" %}
+  <p class="warning">Reservado para <strong>{{ mesa.Nome_Cliente }}</strong> · 📞 {{ mesa.Telefone_Cliente|default:"-" }}</p>
+  <form method="post" action="{% url 'mesa_marcar_pago' id_mesa=mesa_selecionada_id %}" style="display:inline;">
+    {% csrf_token %}
+    <input type="hidden" name="id_venda" value="{{ mesa.ID_Venda }}">
+    <button type="submit" class="btn btn-primary">💲 Marcar pago</button>
+  </form>
+  <form method="post" action="{% url 'mesa_cancelar_reserva' id_mesa=mesa_selecionada_id %}" style="display:inline;">
+    {% csrf_token %}
+    <input type="hidden" name="id_venda" value="{{ mesa.ID_Venda }}">
+    <button type="submit" class="btn btn-danger">❌ Cancelar reserva</button>
+  </form>
+  <a href="{% url 'home' %}" class="btn">Fechar</a>
+  {% elif mesa_status == "Vendido" %}
+  <p class="success">Vendido para <strong>{{ mesa.Nome_Cliente }}</strong></p>
+  <form method="post" action="{% url 'mesa_desfazer_venda' id_mesa=mesa_selecionada_id %}" style="display:inline;">
+    {% csrf_token %}
+    <input type="hidden" name="id_venda" value="{{ mesa.ID_Venda }}">
+    <button type="submit" class="btn">Desfazer venda</button>
+  </form>
+  <a href="{% url 'home' %}" class="btn">Fechar</a>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
