@@ -94,12 +94,13 @@ def limpar_numero(valor):
 
 
 def _normalizar_pem(info):
-    """Corrige chave privada (\\n literal, private_key_base64)."""
+    """Corrige chave privada: \\n literal, private_key_base64, PEM em uma linha."""
     import copy
     info = copy.deepcopy(dict(info))
     key = (info.get("private_key") or "").strip()
     if not isinstance(key, str):
         return info
+    # 1) private_key_base64: montar PEM a partir do base64
     b64_raw = info.get("private_key_base64")
     if b64_raw and isinstance(b64_raw, str):
         b64 = "".join(c for c in b64_raw if ord(c) < 128 and (c.isalnum() or c in "+/="))
@@ -111,8 +112,30 @@ def _normalizar_pem(info):
             info["private_key"] = pem
             info.pop("private_key_base64", None)
             return info
+    # 2) Corrigir \n literal (string com \\n)
     if "\\n" in key:
         key = key.replace("\\n", "\n")
+    # 3) Se a chave está em uma linha só (colou no Render/Streamlit e perdeu quebras)
+    if "-----BEGIN" in key and "-----END" in key and "\n" not in key:
+        m = re.search(r"-----BEGIN[^-]+-----(.+?)-----END", key, re.DOTALL)
+        if m:
+            meio = "".join(c for c in m.group(1) if c.isalnum() or c in "+/=")
+            if len(meio) > 100:
+                pem = "-----BEGIN PRIVATE KEY-----\n"
+                for i in range(0, len(meio), 64):
+                    pem += meio[i : i + 64] + "\n"
+                pem += "-----END PRIVATE KEY-----\n"
+                key = pem
+    # 4) Se ainda é uma linha longa só com base64 (sem BEGIN/END)
+    if "\n" not in key and len(key) > 200:
+        limpo = "".join(c for c in key if c.isalnum() or c in "+/=")
+        if len(limpo) > 200:
+            pem = "-----BEGIN PRIVATE KEY-----\n"
+            for i in range(0, len(limpo), 64):
+                pem += limpo[i : i + 64] + "\n"
+            pem += "-----END PRIVATE KEY-----\n"
+            key = pem
+    # 5) Manter só caracteres válidos do PEM (preservar quebras de linha)
     key = "".join(
         c for c in key
         if ord(c) < 128 and (c in "\n\r" or c.isalnum() or c in "+/=_- ")
@@ -131,7 +154,16 @@ def conectar_gsheets():
             info = _normalizar_pem(info)
             creds = Credentials.from_service_account_info(info, scopes=SCOPES)
             return gspread.authorize(creds).open_by_key(SHEET_ID)
-        except Exception:
+        except Exception as e:
+            err = str(e).lower()
+            if "invalid_grant" in err or "jwt" in err or "signature" in err:
+                st.error(
+                    "**Erro de credenciais (Invalid JWT Signature)** — a chave privada está corrompida ou mal formatada.\n\n"
+                    "**O que fazer:**\n"
+                    "1. No Render/Streamlit Cloud: cole de novo o **JSON completo** do `credentials.json` (copie do arquivo, sem alterar).\n"
+                    "2. Ou use **private_key_base64**: no JSON, substitua o campo `private_key` por `private_key_base64` com o conteúdo base64 da chave (só as linhas entre BEGIN e END, em uma linha). Veja `SECRETS_STREAMLIT_CLOUD.md`."
+                )
+                st.stop()
             pass
     # No Render não existe secrets.toml — usar só env var; senão dá "No secrets found"
     on_render = os.environ.get("RENDER") or os.environ.get("RENDER_EXTERNAL_HOSTNAME")

@@ -68,6 +68,18 @@ O app monta o PEM a partir desse valor; assim você não cola a chave com quebra
 
 Use `private_key` entre `"""` com **quebras de linha reais** (cada linha da chave em uma linha). Copie de novo do `credentials.json` para não levar aspas curvas ou espaços a mais. O app tenta corrigir `\n` literal e remove caracteres inválidos; se ainda der erro, use a Opção A.
 
+## Erro "Invalid JWT Signature" / invalid_grant
+
+Esse erro aparece quando a **chave privada** está corrompida ao colar (por exemplo no Render na variável **GCP_SERVICE_ACCOUNT_JSON**, ou nos Secrets do Streamlit). O painel do Render/Streamlit às vezes altera ou trunca o JSON.
+
+**Solução:** use **private_key_base64** em vez de `private_key`:
+
+1. No `credentials.json`, no campo `"private_key"`, apague as linhas `-----BEGIN PRIVATE KEY-----` e `-----END PRIVATE KEY-----`.
+2. Junte todo o conteúdo do meio em **uma única linha** (sem espaços nem Enter).
+3. No JSON que você cola no Render (ou no TOML do Streamlit), **remova** o campo `private_key` e **adicione** `"private_key_base64": "COLE_AQUI_A_LINHA_BASE64"` (no JSON use aspas duplas).
+
+O app reconstrói o PEM a partir do base64 e evita corrupção ao colar.
+
 ## Erro "No secrets found" no Render
 
 Se no Render aparecer algo como: *"No secrets found. Valid paths for a secrets.toml file..."*, é porque o Streamlit procura um arquivo `secrets.toml` ao iniciar. No repositório existe a pasta `.streamlit/` com um `secrets.toml` **vazio** (só comentários). Assim o Streamlit encontra o arquivo e não exibe esse erro. No Render as credenciais vêm da variável de ambiente **GCP_SERVICE_ACCOUNT_JSON** (Settings → Environment), não desse arquivo.
