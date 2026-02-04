@@ -20,9 +20,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Imagem do mapa: prioriza PNG na pasta, depois JPG
+# Imagem do mapa: nomes sem acento funcionam melhor no Streamlit Cloud
 IMAGEM_MAPA_PNG = "mapa.png"
-IMAGEM_MAPA_JPG = "banda na praça (1).jpg"
+IMAGEM_MAPA_JPG = "mapa.jpg"  # use este nome no GitHub para aparecer no app
+IMAGEM_MAPA_JPG_ALT = "banda na praça (1).jpg"
 CACHE_TTL_SEGUNDOS = 90
 
 # CSS: aparência de sistema (header, cards, botões, métricas)
@@ -394,13 +395,16 @@ with tab_mapa:
 
 # ---------- ABA IMAGEM ----------
 with tab_visual:
-    # Usa o PNG da pasta se existir, senão o JPG
-    if os.path.exists(IMAGEM_MAPA_PNG):
-        st.image(IMAGEM_MAPA_PNG, caption="Layout do salão (mapa.png)", use_container_width=True)
-    elif os.path.exists(IMAGEM_MAPA_JPG):
-        st.image(IMAGEM_MAPA_JPG, caption="Layout do salão", use_container_width=True)
+    # Prioridade: mapa.png → mapa.jpg → banda na praça (1).jpg (nome simples funciona no Streamlit Cloud)
+    arquivo = None
+    for nome in (IMAGEM_MAPA_PNG, IMAGEM_MAPA_JPG, IMAGEM_MAPA_JPG_ALT):
+        if os.path.exists(nome):
+            arquivo = nome
+            break
+    if arquivo:
+        st.image(arquivo, caption="Layout do salão", use_container_width=True)
     else:
-        st.warning(f"Coloque a imagem do mapa na pasta: **{IMAGEM_MAPA_PNG}** ou **{IMAGEM_MAPA_JPG}**.")
+        st.warning(f"Coloque a imagem do mapa na pasta do projeto: **{IMAGEM_MAPA_PNG}** ou **{IMAGEM_MAPA_JPG}** e faça commit no GitHub.")
 
 # ---------- ABA RELATÓRIO ----------
 with tab_financeiro:
