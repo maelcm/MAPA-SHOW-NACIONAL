@@ -20,7 +20,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-NOME_IMAGEM_LAYOUT = "banda na praça (1).jpg"
+# Imagem do mapa: prioriza PNG na pasta, depois JPG
+IMAGEM_MAPA_PNG = "mapa.png"
+IMAGEM_MAPA_JPG = "banda na praça (1).jpg"
 CACHE_TTL_SEGUNDOS = 90
 
 # CSS: aparência de sistema (header, cards, botões, métricas)
@@ -182,7 +184,7 @@ def salvar_reserva(dados):
     st.rerun()
 
 
-def atualizar_status(id_venda, status, valor=0):
+def atualizar_status(id_venda: str, status: str, valor: int | float = 0) -> None:
     sh = conectar_gsheets()
     ws = sh.worksheet("RESERVAS")
     cell = ws.find(id_venda)
@@ -230,6 +232,8 @@ def desenhar_grade(setor_df, max_cols):
 # =============================================================================
 # CARREGAR DADOS E PREPARAR DF
 # =============================================================================
+df_layout: pd.DataFrame = pd.DataFrame()
+df_reservas: pd.DataFrame = pd.DataFrame()
 try:
     df_layout, df_reservas = carregar_dados()
 except Exception as e:
@@ -382,7 +386,7 @@ with tab_mapa:
                     st.success(f"Vendido para **{d['Nome_Cliente']}**")
                     b1, b2 = st.columns(2)
                     if b1.button("Desfazer venda", use_container_width=True):
-                        atualizar_status(d["ID_Venda"], "Reservado", "")
+                        atualizar_status(d["ID_Venda"], "Reservado", 0)
                     if b2.button("Fechar", use_container_width=True):
                         st.session_state["mesa_id"] = None
                         st.rerun()
@@ -390,10 +394,13 @@ with tab_mapa:
 
 # ---------- ABA IMAGEM ----------
 with tab_visual:
-    if os.path.exists(NOME_IMAGEM_LAYOUT):
-        st.image(NOME_IMAGEM_LAYOUT, caption="Layout do salão", use_container_width=True)
+    # Usa o PNG da pasta se existir, senão o JPG
+    if os.path.exists(IMAGEM_MAPA_PNG):
+        st.image(IMAGEM_MAPA_PNG, caption="Layout do salão (mapa.png)", use_container_width=True)
+    elif os.path.exists(IMAGEM_MAPA_JPG):
+        st.image(IMAGEM_MAPA_JPG, caption="Layout do salão", use_container_width=True)
     else:
-        st.warning(f"Imagem **{NOME_IMAGEM_LAYOUT}** não encontrada.")
+        st.warning(f"Coloque a imagem do mapa na pasta: **{IMAGEM_MAPA_PNG}** ou **{IMAGEM_MAPA_JPG}**.")
 
 # ---------- ABA RELATÓRIO ----------
 with tab_financeiro:
