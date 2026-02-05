@@ -80,6 +80,8 @@ Esse erro aparece quando a **chave privada** está corrompida ao colar (por exem
 
 O app reconstrói o PEM a partir do base64 e evita corrupção ao colar.
 
+**Atalho:** rode no seu PC (na pasta do projeto) o script `gerar_json_render.py`. Ele lê o `credentials.json` e imprime o JSON já com `private_key_base64` em uma linha — copie e cole no Render em **GCP_SERVICE_ACCOUNT_JSON**.
+
 ## Erro "No secrets found" no Render
 
 Se no Render aparecer algo como: *"No secrets found. Valid paths for a secrets.toml file..."*, é porque o Streamlit procura um arquivo `secrets.toml` ao iniciar. No repositório existe a pasta `.streamlit/` com um `secrets.toml` **vazio** (só comentários). Assim o Streamlit encontra o arquivo e não exibe esse erro. No Render as credenciais vêm da variável de ambiente **GCP_SERVICE_ACCOUNT_JSON** (Settings → Environment), não desse arquivo.

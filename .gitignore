@@ -1,0 +1,6 @@
+# Credenciais e secrets (não commitar)
+credentials.json
+gcp_credenciais.txt
+.env
+.env.local
+*.pem

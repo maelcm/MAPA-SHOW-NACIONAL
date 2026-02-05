@@ -37,6 +37,8 @@ IMAGEM_MAPA_PNG = "mapa.png"
 IMAGEM_MAPA_JPG = "mapa.jpg"
 IMAGEM_MAPA_JPG_ALT = "banda na praça (1).jpg"
 ORDEM_SETORES = ["PATROCINADOR", "SETOR A", "SETOR B", "SETOR C"]
+# Pasta onde está o app.py (para achar gcp_credenciais.txt e credentials.json)
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # -----------------------------------------------------------------------------
 # CSS — layout e celular (9 mesas em uma fileira)
@@ -115,7 +117,7 @@ def _normalizar_pem(info):
     # 2) Corrigir \n literal (string com \\n)
     if "\\n" in key:
         key = key.replace("\\n", "\n")
-    # 3) Se a chave está em uma linha só (colou no Render/Streamlit e perdeu quebras)
+    # 3) Se a chave está em uma linha só (colou e perdeu quebras)
     if "-----BEGIN" in key and "-----END" in key and "\n" not in key:
         m = re.search(r"-----BEGIN[^-]+-----(.+?)-----END", key, re.DOTALL)
         if m:
@@ -135,7 +137,9 @@ def _normalizar_pem(info):
                 pem += limpo[i : i + 64] + "\n"
             pem += "-----END PRIVATE KEY-----\n"
             key = pem
-    # 5) Manter só caracteres válidos do PEM (preservar quebras de linha)
+    # 5) Quebras de linha só \n (evitar \r no Windows)
+    key = key.replace("\r\n", "\n").replace("\r", "\n")
+    # 6) Manter só caracteres válidos do PEM (preservar \n)
     key = "".join(
         c for c in key
         if ord(c) < 128 and (c in "\n\r" or c.isalnum() or c in "+/=_- ")
@@ -146,7 +150,7 @@ def _normalizar_pem(info):
 
 @st.cache_resource
 def conectar_gsheets():
-    """Conexão com Google Sheets: env var (Render) → st.secrets (Streamlit Cloud) → credentials.json (local)."""
+    """Conexão com Google Sheets: env var → st.secrets (Streamlit Cloud) → gcp_credenciais.txt / credentials.json (local)."""
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if env_json:
         try:
@@ -159,21 +163,11 @@ def conectar_gsheets():
             if "invalid_grant" in err or "jwt" in err or "signature" in err:
                 st.error(
                     "**Erro de credenciais (Invalid JWT Signature)** — a chave privada está corrompida ou mal formatada.\n\n"
-                    "**O que fazer:**\n"
-                    "1. No Render/Streamlit Cloud: cole de novo o **JSON completo** do `credentials.json` (copie do arquivo, sem alterar).\n"
-                    "2. Ou use **private_key_base64**: no JSON, substitua o campo `private_key` por `private_key_base64` com o conteúdo base64 da chave (só as linhas entre BEGIN e END, em uma linha). Veja `SECRETS_STREAMLIT_CLOUD.md`."
+                    "**Local:** apague a variável **GCP_SERVICE_ACCOUNT_JSON** (se existir) ou rode `python gerar_json_credenciais.py` para gerar **gcp_credenciais.txt**."
                 )
                 st.stop()
             pass
-    # No Render não existe secrets.toml — usar só env var; senão dá "No secrets found"
-    on_render = os.environ.get("RENDER") or os.environ.get("RENDER_EXTERNAL_HOSTNAME")
-    if on_render:
-        st.error(
-            "No Render, configure a variável **GCP_SERVICE_ACCOUNT_JSON** em "
-            "Settings → Environment com o conteúdo do credentials.json (JSON completo)."
-        )
-        st.stop()
-    # Streamlit Cloud: st.secrets (só acessar quando NÃO estiver no Render)
+    # Streamlit Cloud: st.secrets
     try:
         if "gcp_service_account" in st.secrets:
             info = _normalizar_pem(st.secrets["gcp_service_account"])
@@ -181,9 +175,42 @@ def conectar_gsheets():
             return gspread.authorize(creds).open_by_key(SHEET_ID)
     except Exception:
         pass
-    # Local: arquivo credentials.json
-    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-    return gspread.authorize(creds).open_by_key(SHEET_ID)
+    # Local: se existir gcp_credenciais.txt (JSON com private_key_base64), usa primeiro
+    gcp_json_path = os.path.join(APP_DIR, "gcp_credenciais.txt")
+    creds_path = os.path.join(APP_DIR, "credentials.json")
+    if os.path.isfile(gcp_json_path):
+        try:
+            with open(gcp_json_path, encoding="utf-8-sig") as f:
+                info = json.load(f)
+            info = _normalizar_pem(info)
+            creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+            return gspread.authorize(creds).open_by_key(SHEET_ID)
+        except Exception as e_gcp:
+            pass  # cai no credentials.json
+    # Local: credentials.json (direto; se falhar, tenta carregar + normalizar)
+    try:
+        creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+        return gspread.authorize(creds).open_by_key(SHEET_ID)
+    except Exception as e1:
+        err1 = str(e1).lower()
+        if "invalid_grant" in err1 or "jwt" in err1 or "signature" in err1 or "file" in err1 or "not found" in err1:
+            try:
+                with open(creds_path, encoding="utf-8-sig") as f:
+                    info = json.load(f)
+                info = _normalizar_pem(info)
+                creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+                return gspread.authorize(creds).open_by_key(SHEET_ID)
+            except Exception as e2:
+                err2 = str(e2).lower()
+                if "invalid_grant" in err2 or "jwt" in err2 or "signature" in err2:
+                    st.error(
+                        "**Erro de credenciais (Invalid JWT Signature)**\n\n"
+                        "**1.** Rode no terminal: `python gerar_json_credenciais.py` (gera **gcp_credenciais.txt**). Depois rode de novo `streamlit run app.py` ou `python run_terminal.py`.\n\n"
+                        "**2.** Se continuar: a chave pode estar **revogada**. No [Google Cloud Console](https://console.cloud.google.com/iam-admin/serviceaccounts) → sua conta → **Keys** → **Add Key** → **Create new key** → JSON. Substitua o **credentials.json** e rode de novo `python gerar_json_credenciais.py`."
+                    )
+                    st.stop()
+                raise e2
+        raise e1
 
 
 @st.cache_data(ttl=CACHE_TTL)
