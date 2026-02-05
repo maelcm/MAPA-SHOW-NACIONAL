@@ -5,17 +5,22 @@ App Streamlit: mapa de mesas, reservas, vendas, relatório. Dados no Google Shee
 import json
 import os
 import re
+import time
 from datetime import datetime
 from io import BytesIO
 
 import pandas as pd
 import streamlit as st
 import gspread
+from gspread.exceptions import APIError as GspreadAPIError
 from google.oauth2.service_account import Credentials
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
+
+# Folha ofício (216 x 317 mm) — uma página
+OFICIO = (216 * mm, 317 * mm)
 
 # -----------------------------------------------------------------------------
 # CONFIGURAÇÃO
@@ -281,21 +286,30 @@ def atualizar_valor_entrada(id_venda, valor_entrada):
 
 def atualizar_celula_por_header(id_venda, header_name, value):
     """Atualiza uma célula da RESERVAS pelo nome da coluna (cabeçalho)."""
-    sh = conectar_gsheets()
-    ws = sh.worksheet("RESERVAS")
-    headers = ws.row_values(1)
-    if header_name not in headers:
-        return
-    cell = ws.find(str(id_venda))
-    if cell:
-        col = headers.index(header_name) + 1
-        ws.update_cell(cell.row, col, str(value) if value is not None else "")
+    for tentativa in range(3):
+        try:
+            sh = conectar_gsheets()
+            ws = sh.worksheet("RESERVAS")
+            headers = ws.row_values(1)
+            if header_name not in headers:
+                return
+            cell = ws.find(str(id_venda))
+            if cell:
+                col = headers.index(header_name) + 1
+                ws.update_cell(cell.row, col, str(value) if value is not None else "")
+            return
+        except GspreadAPIError:
+            if tentativa == 2:
+                raise
+            time.sleep(1 + tentativa)
 
 
 def gerar_pdf_extrato(ocupadas):
-    """Gera PDF do extrato (vendas e reservas). Retorna bytes."""
+    """Gera PDF do extrato (vendas e reservas) em uma folha ofício. Retorna bytes."""
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    # Folha ofício 216x317 mm, margens menores para caber a tabela inteira
+    largura_util = 216 * mm - 24  # margens 12+12
+    doc = SimpleDocTemplate(buf, pagesize=OFICIO, rightMargin=12, leftMargin=12, topMargin=12, bottomMargin=12)
     cols = ["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Valor_Entrada_Cobrado", "Metodo_Pagamento", "Parcelamento"]
     cols = [c for c in cols if c in ocupadas.columns]
     headers = {"Numero_Display": "Mesa", "Status": "Status", "Nome_Cliente": "Cliente", "Telefone_Cliente": "Telefone", "Preco_Mesa": "Preço", "Valor_Entrada_Cobrado": "Valor cobrado", "Metodo_Pagamento": "Pagamento", "Parcelamento": "Parcelamento"}
@@ -303,24 +317,35 @@ def gerar_pdf_extrato(ocupadas):
     data = [header_row]
     for _, row in ocupadas.iterrows():
         data.append([str(row.get(c, "")).replace("nan", "") for c in cols])
-    col_widths = [50, 70, 120, 100, 70, 90, 80, 80][:len(cols)]
-    t = Table(data, colWidths=col_widths)
+    # Larguras proporcionais à largura útil para caber numa folha ofício
+    base_widths = [38, 52, 95, 78, 52, 68, 62, 62][:len(cols)]
+    total_base = sum(base_widths) or 1
+    col_widths = [max(18, int(largura_util * w / total_base)) for w in base_widths]
+    # Ajuste para soma = largura_util (evita overflow)
+    soma = sum(col_widths)
+    if soma > largura_util and soma > 0:
+        col_widths = [max(18, int(w * largura_util / soma)) for w in col_widths]
+    t = Table(data, colWidths=col_widths, repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("ALIGN", (2, 0), (2, -1), "LEFT"),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-        ("TOPPADDING", (0, 0), (-1, 0), 8),
+        ("FONTSIZE", (0, 0), (-1, 0), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+        ("TOPPADDING", (0, 0), (-1, 0), 4),
         ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("FONTSIZE", (0, 1), (-1, -1), 9),
+        ("FONTSIZE", (0, 1), (-1, -1), 7),
+        ("TOPPADDING", (0, 1), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 3),
     ]))
     styles = getSampleStyleSheet()
-    titulo = Paragraph("Extrato — Gestão Festa São Pedro 2026", styles["Title"])
-    doc.build([titulo, Spacer(1, 12), t])
+    titulo_style = styles["Title"]
+    titulo_style.fontSize = 10
+    titulo = Paragraph("Extrato — Gestão Festa São Pedro 2026", titulo_style)
+    doc.build([titulo, Spacer(1, 6), t])
     return buf.getvalue()
 
 
@@ -533,39 +558,42 @@ with tab_financeiro:
 
         # salvar automaticamente alterações em Status, Valor_Entrada_Cobrado, Metodo_Pagamento, Parcelamento
         houve_mudanca = False
-        for idx in df_exibir.index:
-            id_venda = ocupadas.loc[idx, "ID_Venda"]
-            preco = float(limpar_numero(ocupadas.loc[idx, "Preco_Mesa"]))
+        try:
+            for idx in df_exibir.index:
+                id_venda = ocupadas.loc[idx, "ID_Venda"]
+                preco = float(limpar_numero(ocupadas.loc[idx, "Preco_Mesa"]))
 
-            # Status
-            status_antigo = str(df_exibir.at[idx, "Status"])
-            status_novo = str(edited.at[idx, "Status"])
-            if status_novo != status_antigo and status_novo in ("Reservado", "Vendido"):
-                if status_novo == "Vendido":
-                    atualizar_status(id_venda, "Vendido", int(preco))
-                else:
-                    atualizar_status(id_venda, "Reservado", 0)
-                houve_mudanca = True
-                continue
+                # Status
+                status_antigo = str(df_exibir.at[idx, "Status"])
+                status_novo = str(edited.at[idx, "Status"])
+                if status_novo != status_antigo and status_novo in ("Reservado", "Vendido"):
+                    if status_novo == "Vendido":
+                        atualizar_status(id_venda, "Vendido", int(preco))
+                    else:
+                        atualizar_status(id_venda, "Reservado", 0)
+                    houve_mudanca = True
+                    continue
 
-            # Valor de entrada
-            entrada_antiga = float(limpar_numero(df_exibir.at[idx, "Valor_Entrada_Cobrado"]))
-            entrada_nova = float(limpar_numero(edited.at[idx, "Valor_Entrada_Cobrado"]))
-            if abs(entrada_nova - entrada_antiga) > 0.001:
-                atualizar_valor_entrada(id_venda, entrada_nova)
-                houve_mudanca = True
-
-            # Metodo_Pagamento e Parcelamento
-            for campo in ("Metodo_Pagamento", "Parcelamento"):
-                antigo = str(df_exibir.at[idx, campo])
-                novo = str(edited.at[idx, campo])
-                if novo != antigo:
-                    atualizar_celula_por_header(id_venda, campo, novo)
+                # Valor de entrada
+                entrada_antiga = float(limpar_numero(df_exibir.at[idx, "Valor_Entrada_Cobrado"]))
+                entrada_nova = float(limpar_numero(edited.at[idx, "Valor_Entrada_Cobrado"]))
+                if abs(entrada_nova - entrada_antiga) > 0.001:
+                    atualizar_valor_entrada(id_venda, entrada_nova)
                     houve_mudanca = True
 
-        if houve_mudanca:
-            carregar_dados.clear()
-            st.rerun()
+                # Metodo_Pagamento e Parcelamento
+                for campo in ("Metodo_Pagamento", "Parcelamento"):
+                    antigo = str(df_exibir.at[idx, campo])
+                    novo = str(edited.at[idx, campo])
+                    if novo != antigo:
+                        atualizar_celula_por_header(id_venda, campo, novo)
+                        houve_mudanca = True
+
+            if houve_mudanca:
+                carregar_dados.clear()
+                st.rerun()
+        except GspreadAPIError:
+            st.error("Erro ao comunicar com o Google Sheets (limite de uso, permissões ou rede). Tente novamente em instantes.")
 
         pdf_bytes = gerar_pdf_extrato(ocupadas)
         st.download_button(
