@@ -279,16 +279,32 @@ def atualizar_valor_entrada(id_venda, valor_entrada):
     st.toast("Valor de entrada atualizado!", icon="💰")
 
 
+def atualizar_celula_por_header(id_venda, header_name, value):
+    """Atualiza uma célula da RESERVAS pelo nome da coluna (cabeçalho)."""
+    sh = conectar_gsheets()
+    ws = sh.worksheet("RESERVAS")
+    headers = ws.row_values(1)
+    if header_name not in headers:
+        return
+    cell = ws.find(str(id_venda))
+    if cell:
+        col = headers.index(header_name) + 1
+        ws.update_cell(cell.row, col, str(value) if value is not None else "")
+
+
 def gerar_pdf_extrato(ocupadas):
     """Gera PDF do extrato (vendas e reservas). Retorna bytes."""
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
-    cols = ["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Valor_Entrada_Cobrado"]
-    headers = ["Mesa", "Status", "Cliente", "Telefone", "Preço", "Valor cobrado"]
-    data = [headers]
+    cols = ["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Valor_Entrada_Cobrado", "Metodo_Pagamento", "Parcelamento"]
+    cols = [c for c in cols if c in ocupadas.columns]
+    headers = {"Numero_Display": "Mesa", "Status": "Status", "Nome_Cliente": "Cliente", "Telefone_Cliente": "Telefone", "Preco_Mesa": "Preço", "Valor_Entrada_Cobrado": "Valor cobrado", "Metodo_Pagamento": "Pagamento", "Parcelamento": "Parcelamento"}
+    header_row = [headers.get(c, c) for c in cols]
+    data = [header_row]
     for _, row in ocupadas.iterrows():
         data.append([str(row.get(c, "")).replace("nan", "") for c in cols])
-    t = Table(data, colWidths=[50, 70, 120, 100, 70, 90])
+    col_widths = [50, 70, 120, 100, 70, 90, 80, 80][:len(cols)]
+    t = Table(data, colWidths=col_widths)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
@@ -439,7 +455,7 @@ with tab_mapa:
                             salvar_reserva([
                                 f"RES-{int(datetime.now().timestamp())}", m_id, "Reservado",
                                 (cli or "").strip(), (fest or "").strip(), (tel or "").strip(),
-                                "", str(datetime.now()), "",
+                                "", str(datetime.now()), "", "", "",
                             ])
                     if b2.button("Fechar", use_container_width=True):
                         st.session_state["mesa_id"] = None
@@ -487,9 +503,13 @@ with tab_financeiro:
     col6.metric("🟡 % Reservadas", f"{perc_reservadas:.1f}%")
     st.divider()
     st.subheader("Extrato (vendas e reservas)")
-    ocupadas = df_full[df_full["Status"].isin(["Vendido", "Reservado"])]
+    ocupadas = df_full[df_full["Status"].isin(["Vendido", "Reservado"])].copy()
     if not ocupadas.empty:
-        cols = ["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Valor_Entrada_Cobrado"]
+        base_cols = ["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Valor_Entrada_Cobrado", "Metodo_Pagamento", "Parcelamento"]
+        for c in base_cols:
+            if c not in ocupadas.columns:
+                ocupadas[c] = ""
+        cols = base_cols
         df_exibir = ocupadas[cols].copy()
         # coluna calculada: valor restante a receber (preço - entrada)
         df_exibir["Restante"] = df_exibir.apply(
@@ -501,7 +521,8 @@ with tab_financeiro:
         )
         for c in df_exibir.columns:
             df_exibir[c] = df_exibir[c].astype(str).replace("nan", "")
-        st.markdown("Edite diretamente as colunas **Status** e **Valor_Entrada_Cobrado**. As mudanças são salvas automaticamente.")
+        st.caption("Se **Metodo_Pagamento** e **Parcelamento** não existirem na planilha RESERVAS, adicione essas duas colunas na aba do Google Sheets para que apareçam e sejam salvas.")
+        st.markdown("Edite **Status**, **Valor_Entrada_Cobrado**, **Metodo_Pagamento** e **Parcelamento**. As mudanças são salvas automaticamente.")
         edited = st.data_editor(
             df_exibir,
             width="stretch",
@@ -510,7 +531,7 @@ with tab_financeiro:
             key="editor_extrato",
         )
 
-        # salvar automaticamente alterações em Status e Valor_Entrada_Cobrado
+        # salvar automaticamente alterações em Status, Valor_Entrada_Cobrado, Metodo_Pagamento, Parcelamento
         houve_mudanca = False
         for idx in df_exibir.index:
             id_venda = ocupadas.loc[idx, "ID_Venda"]
@@ -521,11 +542,11 @@ with tab_financeiro:
             status_novo = str(edited.at[idx, "Status"])
             if status_novo != status_antigo and status_novo in ("Reservado", "Vendido"):
                 if status_novo == "Vendido":
-                    atualizar_status(id_venda, "Vendido", preco)
+                    atualizar_status(id_venda, "Vendido", int(preco))
                 else:
                     atualizar_status(id_venda, "Reservado", 0)
                 houve_mudanca = True
-                continue  # já haverá rerun, não precisa checar entrada
+                continue
 
             # Valor de entrada
             entrada_antiga = float(limpar_numero(df_exibir.at[idx, "Valor_Entrada_Cobrado"]))
@@ -534,7 +555,16 @@ with tab_financeiro:
                 atualizar_valor_entrada(id_venda, entrada_nova)
                 houve_mudanca = True
 
+            # Metodo_Pagamento e Parcelamento
+            for campo in ("Metodo_Pagamento", "Parcelamento"):
+                antigo = str(df_exibir.at[idx, campo])
+                novo = str(edited.at[idx, campo])
+                if novo != antigo:
+                    atualizar_celula_por_header(id_venda, campo, novo)
+                    houve_mudanca = True
+
         if houve_mudanca:
+            carregar_dados.clear()
             st.rerun()
 
         pdf_bytes = gerar_pdf_extrato(ocupadas)
