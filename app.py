@@ -458,69 +458,66 @@ tab_mapa, tab_visual, tab_financeiro = st.tabs(["🗺️ Mapa de Mesas", "🖼�
 with tab_mapa:
     m_id = st.session_state.get("mesa_id")
 
-    # layout em duas colunas: mapa à esquerda, formulário à direita
-    col_mapa, col_form = st.columns([2, 1])
-
-    with col_mapa:
-        st.subheader("Clique no botão da mesa")
-        st.caption("🟢 Livre · 🟡 Reservado · 🔴 Vendido")
-        for setor in ORDEM_SETORES:
-            sub = df_full[df_full["Tipo_Item"] == setor]
-            if not sub.empty:
-                st.markdown(f"**{setor}**")
-                desenhar_grade(sub, max_cols)
-        for setor in df_full["Tipo_Item"].unique():
-            if setor and setor not in ORDEM_SETORES:
-                st.markdown(f"**{setor}**")
-                desenhar_grade(df_full[df_full["Tipo_Item"] == setor], max_cols)
-
-    with col_form:
+    # Quando uma mesa é clicada: formulário em cima (visível sem rolar), mapa embaixo
+    if m_id:
         st.subheader("Detalhes da mesa")
-        if not m_id:
-            st.info("Clique em uma mesa no mapa para ver ou registrar a reserva aqui ao lado.")
-        else:
-            row = df_full[df_full["ID_Mesa"] == m_id]
-            if not row.empty:
-                d = row.iloc[0]
-                status = d["Status"] if pd.notna(d["Status"]) else "Livre"
-                st.markdown(f"### 📝 Mesa {d['Numero_Display']} — {status}")
-                st.caption(f"Setor: {d.get('Tipo_Item', '-')} · Linha {d['Linha']}")
-                if status == "Livre":
-                    st.write(f"**Valor:** R$ {d['Preco_Mesa']}")
-                    cli = st.text_input("Nome do cliente", key=f"cli_{m_id}")
-                    tel = st.text_input("Telefone", key=f"tel_{m_id}")
-                    fest = st.text_input("Festeiro (indicação)", key=f"fest_{m_id}")
-                    b1, b2 = st.columns(2)
-                    if b1.button("💾 Salvar reserva", type="primary", use_container_width=True):
-                        if not (cli or "").strip():
-                            st.error("Nome obrigatório.")
-                        else:
-                            salvar_reserva([
-                                f"RES-{int(datetime.now().timestamp())}", m_id, "Reservado",
-                                (cli or "").strip(), (fest or "").strip(), (tel or "").strip(),
-                                "", str(datetime.now()), "", "", "",
-                            ])
-                    if b2.button("Fechar", use_container_width=True):
-                        st.session_state["mesa_id"] = None
-                        st.rerun()
-                elif status == "Reservado":
-                    st.warning(f"Reservado para **{d['Nome_Cliente']}** · 📞 {d.get('Telefone_Cliente', '-')}")
-                    b1, b2, b3 = st.columns(3)
-                    if b1.button("💲 Marcar pago", type="primary", use_container_width=True):
-                        atualizar_status(d["ID_Venda"], "Vendido", d["Preco_Num"])
-                    if b2.button("❌ Cancelar reserva", use_container_width=True):
-                        cancelar_reserva(d["ID_Venda"])
-                    if b3.button("Fechar", use_container_width=True):
-                        st.session_state["mesa_id"] = None
-                        st.rerun()
-                elif status == "Vendido":
-                    st.success(f"Vendido para **{d['Nome_Cliente']}**")
-                    b1, b2 = st.columns(2)
-                    if b1.button("Desfazer venda", use_container_width=True):
-                        atualizar_status(d["ID_Venda"], "Reservado", 0)
-                    if b2.button("Fechar", use_container_width=True):
-                        st.session_state["mesa_id"] = None
-                        st.rerun()
+        row = df_full[df_full["ID_Mesa"] == m_id]
+        if not row.empty:
+            d = row.iloc[0]
+            status = d["Status"] if pd.notna(d["Status"]) else "Livre"
+            st.markdown(f"### 📝 Mesa {d['Numero_Display']} — {status}")
+            st.caption(f"Setor: {d.get('Tipo_Item', '-')} · Linha {d['Linha']}")
+            if status == "Livre":
+                st.write(f"**Valor:** R$ {d['Preco_Mesa']}")
+                cli = st.text_input("Nome do cliente", key=f"cli_{m_id}")
+                tel = st.text_input("Telefone", key=f"tel_{m_id}")
+                fest = st.text_input("Festeiro (indicação)", key=f"fest_{m_id}")
+                b1, b2 = st.columns(2)
+                if b1.button("💾 Salvar reserva", type="primary", use_container_width=True):
+                    if not (cli or "").strip():
+                        st.error("Nome obrigatório.")
+                    else:
+                        salvar_reserva([
+                            f"RES-{int(datetime.now().timestamp())}", m_id, "Reservado",
+                            (cli or "").strip(), (fest or "").strip(), (tel or "").strip(),
+                            "", str(datetime.now()), "", "", "",
+                        ])
+                if b2.button("Fechar", use_container_width=True):
+                    st.session_state["mesa_id"] = None
+                    st.rerun()
+            elif status == "Reservado":
+                st.warning(f"Reservado para **{d['Nome_Cliente']}** · 📞 {d.get('Telefone_Cliente', '-')}")
+                b1, b2, b3 = st.columns(3)
+                if b1.button("💲 Marcar pago", type="primary", use_container_width=True):
+                    atualizar_status(d["ID_Venda"], "Vendido", d["Preco_Num"])
+                if b2.button("❌ Cancelar reserva", use_container_width=True):
+                    cancelar_reserva(d["ID_Venda"])
+                if b3.button("Fechar", use_container_width=True):
+                    st.session_state["mesa_id"] = None
+                    st.rerun()
+            elif status == "Vendido":
+                st.success(f"Vendido para **{d['Nome_Cliente']}**")
+                b1, b2 = st.columns(2)
+                if b1.button("Desfazer venda", use_container_width=True):
+                    atualizar_status(d["ID_Venda"], "Reservado", 0)
+                if b2.button("Fechar", use_container_width=True):
+                    st.session_state["mesa_id"] = None
+                    st.rerun()
+        st.divider()
+
+    st.subheader("Clique no botão da mesa")
+    st.caption("🟢 Livre · 🟡 Reservado · 🔴 Vendido")
+    if not m_id:
+        st.info("Clique em uma mesa abaixo para ver ou registrar a reserva — o formulário abrirá aqui em cima.")
+    for setor in ORDEM_SETORES:
+        sub = df_full[df_full["Tipo_Item"] == setor]
+        if not sub.empty:
+            st.markdown(f"**{setor}**")
+            desenhar_grade(sub, max_cols)
+    for setor in df_full["Tipo_Item"].unique():
+        if setor and setor not in ORDEM_SETORES:
+            st.markdown(f"**{setor}**")
+            desenhar_grade(df_full[df_full["Tipo_Item"] == setor], max_cols)
 
 # --- Aba Imagem ---
 with tab_visual:
