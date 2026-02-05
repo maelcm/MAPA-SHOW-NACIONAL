@@ -369,6 +369,7 @@ livres = total - len(vendidas) - len(reservadas)
 caixa = vendidas["Valor_Entrada_Cobrado"].apply(limpar_numero).sum() if not vendidas.empty else 0
 receber = reservadas["Preco_Num"].sum() if not reservadas.empty else 0
 max_cols = int(df_full["Coluna_Num"].max()) if not df_full.empty else 9
+perc_reservadas = (len(reservadas) / total * 100) if total > 0 else 0.0
 
 # -----------------------------------------------------------------------------
 # UI
@@ -465,12 +466,13 @@ with tab_visual:
 # --- Aba Relatório ---
 with tab_financeiro:
     st.subheader("Resumo financeiro e ocupação")
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("💰 Caixa", f"R$ {int(caixa)}")
     col2.metric("💸 A receber", f"R$ {int(receber)}")
     col3.metric("🔴 Vendidas", len(vendidas))
     col4.metric("🟡 Reservadas", len(reservadas))
     col5.metric("🟢 Livres", livres)
+    col6.metric("🟡 % Reservadas", f"{perc_reservadas:.1f}%")
     st.divider()
     st.subheader("Extrato (vendas e reservas)")
     ocupadas = df_full[df_full["Status"].isin(["Vendido", "Reservado"])]
