@@ -493,35 +493,27 @@ with tab_financeiro:
         df_exibir = ocupadas[cols].copy()
         for c in df_exibir.columns:
             df_exibir[c] = df_exibir[c].astype(str).replace("nan", "")
-        st.dataframe(df_exibir, width="stretch")
+        st.markdown("Clique na coluna **Valor_Entrada_Cobrado** para editar diretamente.")
+        edited = st.data_editor(
+            df_exibir,
+            width="stretch",
+            hide_index=True,
+            disabled=["Numero_Display", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa"],
+            key="editor_extrato",
+        )
 
-        # edição de entrada/restante
-        st.markdown("#### Ajustar pagamentos")
-        mesas_opcoes = sorted(ocupadas["Numero_Display"].astype(str).unique())
-        mesa_sel = st.selectbox("Selecione a mesa para editar o pagamento", [""] + mesas_opcoes)
-        if mesa_sel:
-            linha = ocupadas[ocupadas["Numero_Display"].astype(str) == mesa_sel].iloc[0]
-            preco = float(limpar_numero(linha.get("Preco_Mesa", 0)))
-            entrada_atual = float(limpar_numero(linha.get("Valor_Entrada_Cobrado", 0)))
-            restante_atual = max(preco - entrada_atual, 0.0)
-
-            c1, c2 = st.columns(2)
-            novo_entrada = c1.number_input(
-                "Valor de entrada",
-                min_value=0.0,
-                max_value=preco,
-                value=entrada_atual,
-                step=10.0,
-                key=f"entrada_{linha['ID_Venda']}",
-            )
-            novo_restante = max(preco - novo_entrada, 0.0)
-            c2.metric("Valor restante", f"R$ {int(novo_restante)}")
-
-            b1, b2 = st.columns(2)
-            if b1.button("💾 Atualizar entrada", key=f"atualizar_{linha['ID_Venda']}"):
-                atualizar_valor_entrada(linha["ID_Venda"], novo_entrada)
-            if b2.button("✅ Pago total", key=f"pago_total_{linha['ID_Venda']}"):
-                atualizar_status(linha["ID_Venda"], "Vendido", preco)
+        if st.button("💾 Salvar alterações da planilha"):
+            houve_mudanca = False
+            for idx in df_exibir.index:
+                antigo = float(limpar_numero(df_exibir.at[idx, "Valor_Entrada_Cobrado"]))
+                novo = float(limpar_numero(edited.at[idx, "Valor_Entrada_Cobrado"]))
+                if abs(antigo - novo) > 0.001:
+                    id_venda = ocupadas.loc[idx, "ID_Venda"]
+                    atualizar_valor_entrada(id_venda, novo)
+                    houve_mudanca = True
+            if houve_mudanca:
+                st.success("Entradas atualizadas com sucesso a partir da planilha.")
+                st.rerun()
 
         pdf_bytes = gerar_pdf_extrato(ocupadas)
         st.download_button(
