@@ -491,6 +491,14 @@ with tab_financeiro:
     if not ocupadas.empty:
         cols = ["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Valor_Entrada_Cobrado"]
         df_exibir = ocupadas[cols].copy()
+        # coluna calculada: valor restante a receber (preço - entrada)
+        df_exibir["Restante"] = df_exibir.apply(
+            lambda r: max(
+                limpar_numero(r.get("Preco_Mesa", 0)) - limpar_numero(r.get("Valor_Entrada_Cobrado", 0)),
+                0,
+            ),
+            axis=1,
+        )
         for c in df_exibir.columns:
             df_exibir[c] = df_exibir[c].astype(str).replace("nan", "")
         st.markdown("Clique na coluna **Valor_Entrada_Cobrado** para editar diretamente.")
@@ -498,7 +506,7 @@ with tab_financeiro:
             df_exibir,
             width="stretch",
             hide_index=True,
-            disabled=["Numero_Display", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa"],
+            disabled=["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Restante"],
             key="editor_extrato",
         )
 
