@@ -45,14 +45,15 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 # -----------------------------------------------------------------------------
 st.markdown("""
 <style>
-    .stApp { background: linear-gradient(180deg, #0e1117 0%, #1a1d24 100%); }
+    /* Fundo claro */
+    .stApp { background: linear-gradient(180deg, #f5f7fa 0%, #e2e8f0 100%); }
     .main-header {
-        background: linear-gradient(90deg, #1e3a5f 0%, #2d5a87 50%, #1e3a5f 100%);
+        background: linear-gradient(90deg, #edf2ff 0%, #c3dafe 50%, #edf2ff 100%);
         padding: 1rem 1.5rem; border-radius: 12px; margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 20px rgba(15,23,42,0.2);
     }
-    .main-header h1 { color: #fff; font-size: 1.75rem; margin: 0; }
-    .main-header p { color: rgba(255,255,255,0.85); margin: 0.25rem 0 0 0; font-size: 0.9rem; }
+    .main-header h1 { color: #1e293b; font-size: 1.75rem; margin: 0; }
+    .main-header p { color: #334155; margin: 0.25rem 0 0 0; font-size: 0.9rem; }
     /* Métricas: número completo visível, sem cortar nem minimizar */
     [data-testid="stMetric"], [data-testid="stMetricValue"] {
         overflow: visible !important;
@@ -265,6 +266,17 @@ def cancelar_reserva(id_venda):
     if "mesa_id" in st.session_state:
         st.session_state["mesa_id"] = None
     st.rerun()
+
+
+def atualizar_valor_entrada(id_venda, valor_entrada):
+    """Atualiza apenas o valor de entrada da reserva."""
+    sh = conectar_gsheets()
+    ws = sh.worksheet("RESERVAS")
+    cell = ws.find(str(id_venda))
+    if cell:
+        ws.update_cell(cell.row, 7, valor_entrada)
+    carregar_dados.clear()
+    st.toast("Valor de entrada atualizado!", icon="💰")
 
 
 def gerar_pdf_extrato(ocupadas):
@@ -482,6 +494,35 @@ with tab_financeiro:
         for c in df_exibir.columns:
             df_exibir[c] = df_exibir[c].astype(str).replace("nan", "")
         st.dataframe(df_exibir, width="stretch")
+
+        # edição de entrada/restante
+        st.markdown("#### Ajustar pagamentos")
+        mesas_opcoes = sorted(ocupadas["Numero_Display"].astype(str).unique())
+        mesa_sel = st.selectbox("Selecione a mesa para editar o pagamento", [""] + mesas_opcoes)
+        if mesa_sel:
+            linha = ocupadas[ocupadas["Numero_Display"].astype(str) == mesa_sel].iloc[0]
+            preco = float(limpar_numero(linha.get("Preco_Mesa", 0)))
+            entrada_atual = float(limpar_numero(linha.get("Valor_Entrada_Cobrado", 0)))
+            restante_atual = max(preco - entrada_atual, 0.0)
+
+            c1, c2 = st.columns(2)
+            novo_entrada = c1.number_input(
+                "Valor de entrada",
+                min_value=0.0,
+                max_value=preco,
+                value=entrada_atual,
+                step=10.0,
+                key=f"entrada_{linha['ID_Venda']}",
+            )
+            novo_restante = max(preco - novo_entrada, 0.0)
+            c2.metric("Valor restante", f"R$ {int(novo_restante)}")
+
+            b1, b2 = st.columns(2)
+            if b1.button("💾 Atualizar entrada", key=f"atualizar_{linha['ID_Venda']}"):
+                atualizar_valor_entrada(linha["ID_Venda"], novo_entrada)
+            if b2.button("✅ Pago total", key=f"pago_total_{linha['ID_Venda']}"):
+                atualizar_status(linha["ID_Venda"], "Vendido", preco)
+
         pdf_bytes = gerar_pdf_extrato(ocupadas)
         st.download_button(
             "📄 Baixar extrato em PDF",
