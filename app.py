@@ -304,21 +304,32 @@ def atualizar_celula_por_header(id_venda, header_name, value):
             time.sleep(1 + tentativa)
 
 
-def gerar_pdf_extrato(ocupadas):
+def gerar_pdf_extrato(ocupadas, total_mesas=None):
     """Gera PDF do extrato (vendas e reservas) em uma folha ofício. Retorna bytes."""
     buf = BytesIO()
     # Folha ofício 216x317 mm, margens menores para caber a tabela inteira
     largura_util = 216 * mm - 24  # margens 12+12
     doc = SimpleDocTemplate(buf, pagesize=OFICIO, rightMargin=12, leftMargin=12, topMargin=12, bottomMargin=12)
-    cols = ["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Valor_Entrada_Cobrado", "Metodo_Pagamento", "Parcelamento"]
-    cols = [c for c in cols if c in ocupadas.columns]
-    headers = {"Numero_Display": "Mesa", "Status": "Status", "Nome_Cliente": "Cliente", "Telefone_Cliente": "Telefone", "Preco_Mesa": "Preço", "Valor_Entrada_Cobrado": "Valor cobrado", "Metodo_Pagamento": "Pagamento", "Parcelamento": "Parcelamento"}
+    cols = ["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Valor_Entrada_Cobrado", "Restante", "Metodo_Pagamento", "Parcelamento"]
+    cols_base = [c for c in cols if c != "Restante" and c in ocupadas.columns]
+    if "Restante" not in ocupadas.columns:
+        cols_base.append("Restante")
+    cols = cols_base if "Restante" in cols_base else cols_base + ["Restante"]
+    headers = {"Numero_Display": "Mesa", "Status": "Status", "Nome_Cliente": "Cliente", "Telefone_Cliente": "Telefone", "Preco_Mesa": "Preço", "Valor_Entrada_Cobrado": "Valor cobrado", "Restante": "Restante", "Metodo_Pagamento": "Pagamento", "Parcelamento": "Parcelamento"}
     header_row = [headers.get(c, c) for c in cols]
     data = [header_row]
     for _, row in ocupadas.iterrows():
-        data.append([str(row.get(c, "")).replace("nan", "") for c in cols])
-    # Larguras proporcionais à largura útil para caber numa folha ofício
-    base_widths = [38, 52, 95, 78, 52, 68, 62, 62][:len(cols)]
+        linha = []
+        for c in cols:
+            if c == "Restante":
+                preco = limpar_numero(row.get("Preco_Mesa", 0))
+                entrada = limpar_numero(row.get("Valor_Entrada_Cobrado", 0))
+                linha.append(str(max(0.0, preco - entrada)))
+            else:
+                linha.append(str(row.get(c, "")).replace("nan", ""))
+        data.append(linha)
+    # Larguras proporcionais à largura útil para caber numa folha ofício (inclui Restante)
+    base_widths = [38, 52, 95, 78, 52, 58, 58, 62, 62][:len(cols)]
     total_base = sum(base_widths) or 1
     col_widths = [max(18, int(largura_util * w / total_base)) for w in base_widths]
     # Ajuste para soma = largura_util (evita overflow)
@@ -345,7 +356,13 @@ def gerar_pdf_extrato(ocupadas):
     titulo_style = styles["Title"]
     titulo_style.fontSize = 10
     titulo = Paragraph("Extrato — Gestão Festa São Pedro 2026", titulo_style)
-    doc.build([titulo, Spacer(1, 6), t])
+    # Ocupação: mesas reservadas + vendidas sobre total
+    ocup = len(ocupadas)
+    total = total_mesas if total_mesas is not None and total_mesas > 0 else ocup
+    pct = (100.0 * ocup / total) if total else 0
+    texto_ocup = f"Ocupação (reservadas + vendidas): {ocup}/{total} mesas ({pct:.1f}%)"
+    par_ocup = Paragraph(texto_ocup, styles["Normal"])
+    doc.build([titulo, Spacer(1, 4), par_ocup, Spacer(1, 4), t])
     return buf.getvalue()
 
 
@@ -595,7 +612,7 @@ with tab_financeiro:
         except GspreadAPIError:
             st.error("Erro ao comunicar com o Google Sheets (limite de uso, permissões ou rede). Tente novamente em instantes.")
 
-        pdf_bytes = gerar_pdf_extrato(ocupadas)
+        pdf_bytes = gerar_pdf_extrato(ocupadas, total_mesas=len(df_full))
         st.download_button(
             "📄 Baixar extrato em PDF",
             data=pdf_bytes,
