@@ -501,27 +501,41 @@ with tab_financeiro:
         )
         for c in df_exibir.columns:
             df_exibir[c] = df_exibir[c].astype(str).replace("nan", "")
-        st.markdown("Clique na coluna **Valor_Entrada_Cobrado** para editar diretamente.")
+        st.markdown("Edite diretamente as colunas **Status** e **Valor_Entrada_Cobrado**. As mudanças são salvas automaticamente.")
         edited = st.data_editor(
             df_exibir,
             width="stretch",
             hide_index=True,
-            disabled=["Numero_Display", "Status", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Restante"],
+            disabled=["Numero_Display", "Nome_Cliente", "Telefone_Cliente", "Preco_Mesa", "Restante"],
             key="editor_extrato",
         )
 
-        if st.button("💾 Salvar alterações da planilha"):
-            houve_mudanca = False
-            for idx in df_exibir.index:
-                antigo = float(limpar_numero(df_exibir.at[idx, "Valor_Entrada_Cobrado"]))
-                novo = float(limpar_numero(edited.at[idx, "Valor_Entrada_Cobrado"]))
-                if abs(antigo - novo) > 0.001:
-                    id_venda = ocupadas.loc[idx, "ID_Venda"]
-                    atualizar_valor_entrada(id_venda, novo)
-                    houve_mudanca = True
-            if houve_mudanca:
-                st.success("Entradas atualizadas com sucesso a partir da planilha.")
-                st.rerun()
+        # salvar automaticamente alterações em Status e Valor_Entrada_Cobrado
+        houve_mudanca = False
+        for idx in df_exibir.index:
+            id_venda = ocupadas.loc[idx, "ID_Venda"]
+            preco = float(limpar_numero(ocupadas.loc[idx, "Preco_Mesa"]))
+
+            # Status
+            status_antigo = str(df_exibir.at[idx, "Status"])
+            status_novo = str(edited.at[idx, "Status"])
+            if status_novo != status_antigo and status_novo in ("Reservado", "Vendido"):
+                if status_novo == "Vendido":
+                    atualizar_status(id_venda, "Vendido", preco)
+                else:
+                    atualizar_status(id_venda, "Reservado", 0)
+                houve_mudanca = True
+                continue  # já haverá rerun, não precisa checar entrada
+
+            # Valor de entrada
+            entrada_antiga = float(limpar_numero(df_exibir.at[idx, "Valor_Entrada_Cobrado"]))
+            entrada_nova = float(limpar_numero(edited.at[idx, "Valor_Entrada_Cobrado"]))
+            if abs(entrada_nova - entrada_antiga) > 0.001:
+                atualizar_valor_entrada(id_venda, entrada_nova)
+                houve_mudanca = True
+
+        if houve_mudanca:
+            st.rerun()
 
         pdf_bytes = gerar_pdf_extrato(ocupadas)
         st.download_button(
